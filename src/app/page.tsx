@@ -72,12 +72,6 @@ const initialMessages: Message[] = [
   { id: 3, role: "assistant", text: "Got it" },
 ];
 
-const scheduleItems = [
-  { id: 1, title: "Team standup", time: "10:00 AM" },
-  { id: 2, title: "Focus session", time: "1:30 PM" },
-  { id: 3, title: "Dinner with family", time: "7:00 PM" },
-];
-
 function formatCreatedAt(value: string) {
   const date = new Date(value);
 
@@ -143,6 +137,13 @@ type AssistantApiResponse = {
   success: boolean;
   intent:
     | "create_task"
+    | "update_task"
+    | "delete_task"
+    | "complete_task"
+    | "reopen_task"
+    | "add_update_notes"
+    | "update_due_date"
+    | "rename_task"
     | "create_note"
     | "get_dashboard_summary"
     | "get_tasks_overview"
@@ -150,6 +151,8 @@ type AssistantApiResponse = {
     | "unknown";
   assistantReply: string;
   createdTask?: Task;
+  updatedTask?: Task;
+  deletedTask?: Task;
   createdNote?: Note;
   errorDetail?: string;
 };
@@ -885,6 +888,14 @@ export default function Home() {
           addAssistantActivity("Task Created", result.createdTask.title);
         }
 
+        if (result.updatedTask) {
+          addAssistantActivity("Task Updated", result.updatedTask.title);
+        }
+
+        if (result.deletedTask) {
+          addAssistantActivity("Task Deleted", result.deletedTask.title);
+        }
+
         if (result.createdNote) {
           addAssistantActivity(
             "Note Saved",
@@ -982,9 +993,35 @@ export default function Home() {
     setActivePage("Dashboard");
   }
 
+  const assistantPanel = (
+    <div ref={assistantSectionRef}>
+      <AssistantView
+        mode={assistantMode}
+        onModeChange={setAssistantMode}
+        messages={messages}
+        chatInput={chatInput}
+        onChatInputChange={setChatInput}
+        onChatSubmit={handleChatSubmit}
+        assistantError={assistantError}
+        assistantDebugInfo={assistantDebugInfo}
+        microphoneStatus={microphoneStatus}
+        micTranscript={micTranscript}
+        isMicListening={isMicListening}
+        talkStatus={talkStatus}
+        talkTranscript={talkTranscript}
+        talkReply={talkReply}
+        isPushToTalkActive={isPushToTalkActive}
+        onEnableMicrophone={handleEnableMicrophone}
+        onStartMicListening={handleMicModeStart}
+        onPushToTalkStart={handlePushToTalkStart}
+        onPushToTalkEnd={handlePushToTalkEnd}
+      />
+    </div>
+  );
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.08),_transparent_35%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] p-4 sm:p-6">
-      <div className="mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white/80 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur lg:min-h-[860px] lg:flex-row lg:rounded-[32px]">
+    <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.08),_transparent_35%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] p-2 sm:p-6">
+      <div className="mx-auto flex min-h-[calc(100vh-1rem)] w-full max-w-7xl flex-col overflow-hidden rounded-[22px] border border-white/70 bg-white/80 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur sm:min-h-[calc(100vh-2rem)] sm:rounded-[28px] lg:min-h-[860px] lg:flex-row lg:rounded-[32px]">
         <aside className="hidden w-full flex-col border-b border-slate-200/80 bg-slate-950 px-5 py-6 text-slate-100 lg:flex lg:max-w-72 lg:border-r lg:border-b-0">
           <div className="mb-8">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-400">
@@ -1029,8 +1066,8 @@ export default function Home() {
           </div>
         </aside>
 
-        <section className="flex-1 bg-slate-50/70 p-3 sm:p-5 lg:p-8">
-          <div className="mb-5 rounded-[28px] border border-slate-200 bg-slate-950 px-4 py-4 text-slate-100 shadow-sm lg:hidden">
+        <section className="min-w-0 flex-1 bg-slate-50/70 p-2 sm:p-5 lg:p-8">
+          <div className="mb-3 rounded-[22px] border border-slate-200 bg-slate-950 px-4 py-4 text-slate-100 shadow-sm sm:mb-5 sm:rounded-[28px] lg:hidden">
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
@@ -1071,7 +1108,11 @@ export default function Home() {
             )}
           </div>
 
-          <div className="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-5 sm:mb-8 sm:pb-6 lg:flex-row lg:items-end lg:justify-between">
+          {currentUser && activePage === "Dashboard" && (
+            <div className="mb-4 lg:hidden">{assistantPanel}</div>
+          )}
+
+          <div className="mb-4 flex flex-col gap-4 border-b border-slate-200 pb-4 sm:mb-8 sm:pb-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-medium uppercase tracking-[0.24em] text-slate-500">
                 Workspace
@@ -1122,14 +1163,17 @@ export default function Home() {
           )}
 
           {currentUser && activePage === "Dashboard" && (
-            <DashboardView
-              todayTasks={todayTasks}
-              upcomingTasks={upcomingTasks}
-              pendingTasks={pendingTasks}
-              completedTasks={completedTasks}
-              notes={notes}
-              assistantActivities={assistantActivities}
-            />
+            <div className="space-y-5 md:space-y-6">
+              <div className="hidden lg:block">{assistantPanel}</div>
+              <DashboardView
+                todayTasks={todayTasks}
+                upcomingTasks={upcomingTasks}
+                pendingTasks={pendingTasks}
+                completedTasks={completedTasks}
+                notes={notes}
+                assistantActivities={assistantActivities}
+              />
+            </div>
           )}
 
           {currentUser && activePage === "Tasks" && (
@@ -1168,29 +1212,7 @@ export default function Home() {
           )}
 
           {currentUser && activePage === "Assistant" && (
-            <div ref={assistantSectionRef}>
-              <AssistantView
-                mode={assistantMode}
-                onModeChange={setAssistantMode}
-                messages={messages}
-                chatInput={chatInput}
-                onChatInputChange={setChatInput}
-                onChatSubmit={handleChatSubmit}
-                assistantError={assistantError}
-                assistantDebugInfo={assistantDebugInfo}
-                microphoneStatus={microphoneStatus}
-                micTranscript={micTranscript}
-                isMicListening={isMicListening}
-                talkStatus={talkStatus}
-                talkTranscript={talkTranscript}
-                talkReply={talkReply}
-                isPushToTalkActive={isPushToTalkActive}
-                onEnableMicrophone={handleEnableMicrophone}
-                onStartMicListening={handleMicModeStart}
-                onPushToTalkStart={handlePushToTalkStart}
-                onPushToTalkEnd={handlePushToTalkEnd}
-              />
-            </div>
+            assistantPanel
           )}
 
           {currentUser && activePage === "Settings" && (
@@ -1255,20 +1277,6 @@ function DashboardView({
                 {note.title.trim() || "Untitled Note"}
               </h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">{note.content}</p>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Upcoming Schedule">
-        <div className="space-y-3">
-          {scheduleItems.map((item) => (
-            <div
-              key={item.id}
-              className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3"
-            >
-              <span className="text-sm font-medium text-slate-700">{item.title}</span>
-              <span className="text-sm text-slate-400">{item.time}</span>
             </div>
           ))}
         </div>
@@ -1550,9 +1558,14 @@ function AssistantView({
   onPushToTalkEnd: () => void;
 }) {
   const modes: AssistantMode[] = ["Chat Mode", "Mic Mode", "Talk Mode"];
+  const modeLabels: Record<AssistantMode, string> = {
+    "Chat Mode": "Chat",
+    "Mic Mode": "Mic",
+    "Talk Mode": "Talk",
+  };
 
   return (
-    <SectionCard title="Assistant">
+    <SectionCard title="Assistant" className="overflow-visible">
       {assistantError && (
         <div className="mb-4 space-y-2">
           <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
@@ -1565,7 +1578,7 @@ function AssistantView({
           )}
         </div>
       )}
-      <div className="mb-6 flex flex-wrap gap-3">
+      <div className="sticky top-2 z-20 mb-5 grid grid-cols-3 gap-2 rounded-3xl border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur sm:static sm:mb-6 sm:flex sm:flex-wrap sm:gap-3 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
         {modes.map((item) => {
           const isActive = item === mode;
 
@@ -1574,28 +1587,28 @@ function AssistantView({
               key={item}
               type="button"
               onClick={() => onModeChange(item)}
-              className={`rounded-2xl px-4 py-3 text-sm font-medium transition ${
+              className={`min-h-12 rounded-2xl px-4 py-3 text-sm font-semibold transition sm:min-w-24 ${
                 isActive
-                  ? "bg-slate-900 text-white"
-                  : "border border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                  ? "bg-slate-900 text-white shadow-md"
+                  : "bg-slate-50 text-slate-600 hover:bg-white sm:border sm:border-slate-200"
               }`}
             >
-              {item}
+              {modeLabels[item]}
             </button>
           );
         })}
       </div>
 
       {mode === "Chat Mode" && (
-        <div className="space-y-4">
-          <div className="flex min-h-[280px] flex-col justify-end gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:min-h-[360px]">
+        <div className="space-y-4 sm:space-y-5">
+          <div className="flex min-h-[260px] flex-col justify-end gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-3 sm:min-h-[360px] sm:p-4">
             {messages.map((message) => (
               <div
                 key={message.id}
                 className={
                   message.role === "user"
-                    ? "max-w-[80%] self-end rounded-2xl rounded-br-md bg-slate-200 px-4 py-3 text-sm text-slate-700"
-                    : "max-w-[80%] rounded-2xl rounded-bl-md bg-slate-900 px-4 py-3 text-sm text-white"
+                    ? "max-w-[92%] self-end rounded-2xl rounded-br-md bg-slate-200 px-4 py-3 text-sm leading-6 text-slate-700 sm:max-w-[80%]"
+                    : "max-w-[92%] rounded-2xl rounded-bl-md bg-slate-900 px-4 py-3 text-sm leading-6 text-white sm:max-w-[80%]"
                 }
               >
                 {message.text}
@@ -1603,18 +1616,18 @@ function AssistantView({
             ))}
           </div>
 
-          <form onSubmit={onChatSubmit} className="flex flex-col gap-3 sm:flex-row">
+          <form onSubmit={onChatSubmit} className="rounded-3xl border border-slate-200 bg-white p-2 shadow-sm sm:flex sm:gap-3 sm:p-3">
             <input
               type="text"
               value={chatInput}
               onChange={(event) => onChatInputChange(event.target.value)}
               placeholder="Type your message..."
-              className="flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              className="min-h-12 w-full rounded-2xl border border-transparent bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-200 sm:flex-1 sm:text-sm"
             />
             <button
               type="submit"
               disabled={!chatInput.trim()}
-              className="min-h-12 rounded-2xl bg-slate-900 px-6 py-3 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="mt-2 min-h-12 w-full rounded-2xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300 sm:mt-0 sm:w-auto"
             >
               Send
             </button>
@@ -1623,11 +1636,11 @@ function AssistantView({
       )}
 
       {mode === "Mic Mode" && (
-        <div className="flex min-h-[420px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center">
+        <div className="flex min-h-[360px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center sm:min-h-[420px] sm:px-6">
           <button
             type="button"
             onClick={() => void onStartMicListening()}
-            className={`flex h-24 w-24 items-center justify-center rounded-full text-lg font-semibold text-white transition ${
+            className={`flex h-24 w-24 items-center justify-center rounded-full text-lg font-semibold text-white shadow-lg shadow-slate-200 transition ${
               isMicListening ? "bg-slate-700" : "bg-slate-900 hover:bg-slate-800"
             }`}
           >
@@ -1642,14 +1655,14 @@ function AssistantView({
             <button
               type="button"
               onClick={() => void onEnableMicrophone()}
-              className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-400"
+              className="min-h-12 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-400"
             >
               Enable Microphone
             </button>
             <button
               type="button"
               onClick={() => void onStartMicListening()}
-              className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
+              className="min-h-12 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
             >
               {isMicListening ? "Listening..." : "Start Listening"}
             </button>
@@ -1667,7 +1680,7 @@ function AssistantView({
       )}
 
       {mode === "Talk Mode" && (
-        <div className="flex min-h-[420px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center">
+        <div className="flex min-h-[360px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center sm:min-h-[420px] sm:px-6">
           <button
             type="button"
             onMouseDown={() => void onPushToTalkStart()}
@@ -1687,7 +1700,7 @@ function AssistantView({
                 onPushToTalkEnd();
               }
             }}
-            className={`rounded-full px-8 py-5 text-sm font-semibold text-white shadow-lg shadow-slate-300 transition ${
+            className={`min-h-16 rounded-full px-8 py-5 text-sm font-semibold text-white shadow-lg shadow-slate-300 transition ${
               isPushToTalkActive ? "bg-slate-700" : "bg-slate-900"
             }`}
           >
@@ -1813,8 +1826,8 @@ function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <section className={`rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 ${className}`}>
-      <div className="mb-5 flex items-center justify-between">
+    <section className={`rounded-[22px] border border-slate-200 bg-white p-3 shadow-sm sm:rounded-3xl sm:p-5 ${className}`}>
+      <div className="mb-4 flex items-center justify-between sm:mb-5">
         <h3 className="text-lg font-semibold text-slate-950">{title}</h3>
       </div>
       {children}
